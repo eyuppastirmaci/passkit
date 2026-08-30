@@ -6,6 +6,49 @@ const SYMBOLS: &str = "!@#$%^&*()-_=+[]{};:,.<>?";
 /// Look-alike characters dropped by `--no-ambiguous`.
 pub const AMBIGUOUS: &str = "0O1lI";
 
+/// The four character classes, in canonical order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClassKind {
+    Upper,
+    Lower,
+    Digits,
+    Symbols,
+}
+
+impl ClassKind {
+    /// Declaration order matches the discriminant values, so
+    /// `ALL[kind as usize]` is always `kind` itself.
+    pub(crate) const ALL: [ClassKind; 4] = [
+        ClassKind::Upper,
+        ClassKind::Lower,
+        ClassKind::Digits,
+        ClassKind::Symbols,
+    ];
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            ClassKind::Upper => "upper",
+            ClassKind::Lower => "lower",
+            ClassKind::Digits => "digits",
+            ClassKind::Symbols => "symbols",
+        }
+    }
+
+    fn set(self) -> &'static str {
+        match self {
+            ClassKind::Upper => UPPER,
+            ClassKind::Lower => LOWER,
+            ClassKind::Digits => DIGITS,
+            ClassKind::Symbols => SYMBOLS,
+        }
+    }
+
+    /// This class's characters with excluded ones removed.
+    pub(crate) fn pool(self, exclude: &str) -> Vec<char> {
+        self.set().chars().filter(|c| !exclude.contains(*c)).collect()
+    }
+}
+
 /// Which character classes are enabled for generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CharacterClasses {
@@ -26,6 +69,17 @@ impl Default for CharacterClasses {
     }
 }
 
+impl CharacterClasses {
+    fn is_enabled(&self, kind: ClassKind) -> bool {
+        match kind {
+            ClassKind::Upper => self.upper,
+            ClassKind::Lower => self.lower,
+            ClassKind::Digits => self.digits,
+            ClassKind::Symbols => self.symbols,
+        }
+    }
+}
+
 /// Returns one `(name, pool)` pair per *enabled* class, with excluded
 /// characters already removed. Pools are kept separate (instead of one
 /// merged charset) so `require_each` can check membership per class.
@@ -33,19 +87,10 @@ pub(crate) fn class_pools(
     classes: &CharacterClasses,
     exclude: &str,
 ) -> Vec<(&'static str, Vec<char>)> {
-    let all = [
-        ("upper", classes.upper, UPPER),
-        ("lower", classes.lower, LOWER),
-        ("digits", classes.digits, DIGITS),
-        ("symbols", classes.symbols, SYMBOLS),
-    ];
-
-    all.into_iter()
-        .filter(|(_, enabled, _)| *enabled)
-        .map(|(name, _, set)| {
-            let pool = set.chars().filter(|c| !exclude.contains(*c)).collect();
-            (name, pool)
-        })
+    ClassKind::ALL
+        .into_iter()
+        .filter(|kind| classes.is_enabled(*kind))
+        .map(|kind| (kind.name(), kind.pool(exclude)))
         .collect()
 }
 
@@ -82,6 +127,13 @@ mod tests {
         let pools = class_pools(&CharacterClasses::default(), AMBIGUOUS);
         for (_, pool) in pools {
             assert!(pool.iter().all(|c| !AMBIGUOUS.contains(*c)));
+        }
+    }
+
+    #[test]
+    fn all_order_matches_discriminants() {
+        for (index, kind) in ClassKind::ALL.into_iter().enumerate() {
+            assert_eq!(kind as usize, index);
         }
     }
 }

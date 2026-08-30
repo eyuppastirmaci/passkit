@@ -1,4 +1,6 @@
 mod charset;
+pub mod passphrase;
+pub mod pattern;
 
 pub use charset::{AMBIGUOUS, CharacterClasses};
 
